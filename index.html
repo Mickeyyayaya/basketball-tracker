@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARES TRACKER v6 (Locked)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,600;1,700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #000000;
+            --surface-glass: rgba(30, 30, 30, 0.6);
+            --accent-primary: #00f0ff;
+            --accent-alert: #ff2a2a;
+            --accent-warn: #ffcc00;
+            --text-primary: #ffffff;
+            --border-radius: 16px;
+            --blur: 20px;
+        }
+
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Exo 2', sans-serif;
+            margin: 0; padding: 20px;
+            min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+            background: radial-gradient(circle at 50% -20%, #222 0%, #000 70%);
+        }
+
+        /* Input Fix */
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+
+        .dashboard { 
+            width: 100%; max-width: 500px; 
+            display: flex; flex-direction: column; gap: 20px; padding-bottom: 80px;
+        }
+
+        .top-bar { text-align: center; opacity: 0.5; margin-bottom: -10px; }
+        .brand { font-family: 'Rajdhani'; font-weight: 700; font-size: 1.2rem; letter-spacing: 4px; }
+
+        /* HUD */
+        .hud-display {
+            background: var(--surface-glass);
+            backdrop-filter: blur(var(--blur));
+            -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--border-radius);
+            padding: 30px 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            transition: border-color 0.3s;
+        }
+        
+        /* 比賽進行中 HUD 邊框發光 */
+        .hud-display.active-mode {
+            border-color: rgba(0, 240, 255, 0.3);
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.1);
+        }
+
+        .period-badge {
+            font-family: 'Rajdhani'; font-weight: bold; font-size: 1.2rem; 
+            color: #888; letter-spacing: 4px; margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .timer-wrapper { display: flex; justify-content: center; align-items: center; gap: 15px; }
+
+        .main-timer {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 5rem; line-height: 1; font-weight: 500;
+            color: var(--text-primary);
+            text-shadow: 0 0 20px rgba(0,240,255,0.1);
+            width: 240px;
+        }
+        .main-timer.warning { color: var(--accent-warn); text-shadow: 0 0 20px rgba(255,204,0,0.3); }
+        .main-timer.ended { color: #444; }
+
+        .time-adj-btn {
+            background: transparent; border: 1px solid #333; color: #555;
+            width: 40px; height: 40px; border-radius: 50%;
+            font-size: 1.5rem; line-height: 0; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s;
+        }
+        .time-adj-btn:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .running .time-adj-btn { opacity: 0; pointer-events: none; }
+
+        .status-text { 
+            font-size: 0.75rem; color: var(--accent-alert); height: 20px; 
+            margin-top: 10px; opacity: 0; transition: 0.3s; font-weight: 600; letter-spacing: 1px;
+        }
+        .status-text.visible { opacity: 1; }
+
+        .control-panel { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-top: 25px; }
+
+        button.main-action {
+            border: none; border-radius: 12px; padding: 15px;
+            font-family: 'Exo 2'; font-weight: 700; letter-spacing: 1px;
+            cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            text-transform: uppercase; font-size: 0.9rem;
+            background: var(--text-primary); color: #000;
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
+        }
+        button.main-action:active { transform: scale(0.98); }
+        button.main-action:disabled { background: #222; color: #555; cursor: not-allowed; box-shadow: none; }
+        button.main-action.paused-mode {
+            background: var(--accent-alert); color: #fff;
+            box-shadow: 0 0 20px rgba(255, 42, 42, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05); color: #ccc; border: none;
+            border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+        /* Input Bar */
+        .input-bar {
+            display: flex; gap: 10px; background: #111; padding: 8px; border-radius: 12px;
+            border: 1px solid #333; margin-bottom: 10px; align-items: center; transition: opacity 0.3s;
+        }
+        /* 鎖定時變暗 */
+        .input-bar.locked { opacity: 0.3; pointer-events: none; }
+
+        input {
+            background: transparent; border: none; color: #fff; 
+            font-family: 'Exo 2'; outline: none; font-size: 1rem;
+        }
+        #new-number { 
+            width: 60px; text-align: center; border-right: 1px solid #333; 
+            font-family: 'Rajdhani'; font-weight: bold; color: var(--accent-primary);
+        }
+        #new-name { flex: 1; padding-left: 10px; }
+        
+        .add-btn {
+            background: var(--accent-primary); color: #000; border: none;
+            border-radius: 8px; width: 60px; height: 35px; font-weight: bold; cursor: pointer;
+        }
+
+        /* Roster Lists */
+        .roster-header {
+            display: flex; justify-content: space-between; padding: 0 10px; margin-bottom: 5px;
+            font-size: 0.8rem; color: #666; letter-spacing: 1px;
+        }
+        
+        /* 鎖定容器樣式 */
+        .roster-list-container { transition: opacity 0.3s; }
+        .roster-list-container.locked { opacity: 0.5; cursor: not-allowed; }
+        .roster-list-container.locked .player-card { pointer-events: none; } /* 物理阻擋點擊 */
+
+        .player-card {
+            background: var(--surface-glass); margin-bottom: 8px; padding: 12px 20px;
+            border-radius: 12px; display: flex; justify-content: space-between; align-items: center;
+            border-left: 3px solid transparent; transition: all 0.3s ease;
+        }
+        .player-card.active {
+            background: linear-gradient(90deg, rgba(0,240,255,0.1), transparent);
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .p-left { display: flex; align-items: center; gap: 15px; }
+        .p-num { font-family: 'Rajdhani'; font-weight: bold; font-size: 1.4rem; color: #444; width: 35px; }
+        .active .p-num { color: var(--accent-primary); text-shadow: 0 0 8px rgba(0,240,255,0.6); }
+        .p-name { font-weight: 600; font-size: 1rem; }
+        
+        .p-right { display: flex; align-items: center; gap: 15px; }
+        .p-time { font-family: 'Rajdhani'; font-size: 1.2rem; color: #666; font-weight: 500; min-width: 50px; text-align: right;}
+        .active .p-time { color: #fff; }
+
+        .del-btn {
+            color: #444; background: transparent; border: none; font-size: 1.2rem; cursor: pointer; padding: 0 5px;
+        }
+        .del-btn:hover { color: var(--accent-alert); }
+
+        /* Modal */
+        #stats-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); backdrop-filter: blur(5px);
+            z-index: 100; display: none; flex-direction: column; padding: 30px;
+        }
+        #stats-modal.show { display: flex; }
+        table { width: 100%; border-collapse: collapse; color: #ccc; font-size: 0.9rem; margin-top: 20px; }
+        th { text-align: left; color: var(--accent-primary); border-bottom: 1px solid #333; padding: 10px; }
+        td { border-bottom: 1px solid #222; padding: 10px; }
+
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="top-bar"><div class="brand">ARES SYSTEM</div></div>
+
+        <div class="hud-display" id="hud-panel">
+            <div class="period-badge" id="period-display">QUARTER 1</div>
+            
+            <div class="timer-wrapper">
+                <button class="time-adj-btn" onclick="adjustTime(-1)">−</button>
+                <div class="main-timer" id="game-timer">12:00</div>
+                <button class="time-adj-btn" onclick="adjustTime(1)">+</button>
+            </div>
+
+            <div id="status-msg" class="status-text">WAITING FOR 5 PLAYERS</div>
+
+            <div class="control-panel">
+                <button id="start-btn" class="main-action" onclick="toggleGameTimer()" disabled>WAITING...</button>
+                <div style="display:grid; gap:8px;">
+                    <button class="btn-secondary" onclick="nextPeriod()">NEXT Q</button>
+                    <button class="btn-secondary" onclick="toggleStats()">LOGS</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-bar" id="input-section">
+            <input type="number" id="new-number" placeholder="#" maxlength="2" inputmode="numeric">
+            <input type="text" id="new-name" placeholder="Enter Player Name">
+            <button class="add-btn" onclick="addPlayer()">ADD</button>
+        </div>
+
+        <div>
+            <div class="roster-header">
+                <span>ON COURT</span>
+                <span id="on-court-count" style="color:#fff">0 / 5</span>
+            </div>
+            <div id="active-players-list" class="roster-list-container"></div>
+        </div>
+
+        <div>
+            <div class="roster-header"><span>BENCH</span></div>
+            <div id="bench-players-list" class="roster-list-container"></div>
+        </div>
+    </div>
+
+    <div id="stats-modal">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="font-family:'Rajdhani'; color:var(--accent-primary); margin:0;">ANALYTICS</h2>
+            <div onclick="toggleStats()" style="font-size:1.5rem; cursor:pointer; color:#fff;">✕</div>
+        </div>
+        <div style="overflow-y: auto; flex:1;">
+            <table id="stats-table"></table>
+        </div>
+        <button class="main-action" onclick="exportData()" style="width:100%; margin-top:20px;">EXPORT DATA</button>
+    </div>
+
+    <script>
+        let players = [
+            { id: 1, number: '23', name: 'James', onCourt: false, periodTimes: {1:0}, totalSeconds: 0 },
+            { id: 2, number: '30', name: 'Curry', onCourt: false, periodTimes: {1:0}, totalSeconds: 0 },
+            { id: 3, number: '11', name: 'Irving', onCourt: false, periodTimes: {1:0}, totalSeconds: 0 },
+            { id: 4, number: '35', name: 'Durant', onCourt: false, periodTimes: {1:0}, totalSeconds: 0 },
+            { id: 5, number: '15', name: 'Jokic', onCourt: false, periodTimes: {1:0}, totalSeconds: 0 }
+        ];
+
+        let state = {
+            isRunning: false,
+            currentPeriod: 1,
+            timeLeft: 12 * 60,
+            defaultDuration: 12 * 60,
+            intervalId: null
+        };
+
+        render();
+        checkStartReadiness();
+
+        // --- Core Functions ---
+        function adjustTime(minutes) {
+            if (state.isRunning) return;
+            let newSeconds = state.timeLeft + (minutes * 60);
+            if (newSeconds < 60) newSeconds = 60;
+            if (newSeconds > 99 * 60) newSeconds = 99 * 60;
+            state.timeLeft = newSeconds;
+            state.defaultDuration = newSeconds;
+            document.getElementById('game-timer').innerText = formatTime(state.timeLeft);
+            document.getElementById('game-timer').classList.remove('ended');
+        }
+
+        function checkStartReadiness() {
+            const onCourtCount = players.filter(p => p.onCourt).length;
+            const btn = document.getElementById('start-btn');
+            const msg = document.getElementById('status-msg');
+
+            if (state.isRunning) return;
+
+            if (onCourtCount === 5) {
+                btn.disabled = false;
+                btn.innerText = "START MATCH";
+                btn.style.opacity = 1;
+                msg.classList.remove('visible');
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = 0.5;
+                const diff = 5 - onCourtCount;
+                if(diff > 0) btn.innerText = `ADD ${diff} PLAYER${diff>1?'S':''}`;
+                else btn.innerText = `REMOVE ${Math.abs(diff)}`;
+                
+                msg.innerText = "REGULATION: EXACTLY 5 PLAYERS REQUIRED";
+                msg.classList.add('visible');
+            }
+        }
+
+        // --- System Lock Function ---
+        // 控制是否鎖定介面
+        function setInterfaceLock(locked) {
+            const lists = document.querySelectorAll('.roster-list-container');
+            const inputBar = document.getElementById('input-section');
+            const hud = document.getElementById('hud-panel');
+
+            if (locked) {
+                // 鎖定狀態
+                lists.forEach(el => el.classList.add('locked'));
+                inputBar.classList.add('locked');
+                hud.classList.add('active-mode'); // 邊框發光
+            } else {
+                // 解鎖狀態
+                lists.forEach(el => el.classList.remove('locked'));
+                inputBar.classList.remove('locked');
+                hud.classList.remove('active-mode');
+            }
+        }
+
+        function showLockedAlert() {
+            const msg = document.getElementById('status-msg');
+            msg.innerText = "SYSTEM LOCKED: PAUSE TO SUBSTITUTE";
+            msg.classList.add('visible');
+            // 2秒後自動消失
+            setTimeout(() => {
+                if(state.isRunning) {
+                     msg.classList.remove('visible');
+                }
+            }, 2000);
+        }
+
+        function toggleGameTimer() {
+            const btn = document.getElementById('start-btn');
+            const timerDisplay = document.getElementById('game-timer');
+            const hud = document.getElementById('hud-panel');
+
+            const onCourtCount = players.filter(p => p.onCourt).length;
+            if (onCourtCount !== 5 && !state.isRunning) return;
+
+            if (state.timeLeft <= 0) {
+                alert("TIME IS UP. START NEXT PERIOD.");
+                return;
+            }
+
+            if (state.isRunning) {
+                // --- PAUSE GAME ---
+                clearInterval(state.intervalId);
+                state.isRunning = false;
+                
+                btn.innerText = "RESUME";
+                btn.classList.remove('paused-mode');
+                hud.classList.remove('running');
+                
+                // 解鎖介面
+                setInterfaceLock(false);
+                
+                document.getElementById('status-msg').innerText = "SYSTEM PAUSED - SUBSTITUTION OPEN";
+                document.getElementById('status-msg').classList.add('visible');
+                document.getElementById('status-msg').style.color = "var(--accent-warn)";
+
+            } else {
+                // --- START GAME ---
+                state.isRunning = true;
+                
+                btn.innerText = "PAUSE";
+                btn.classList.add('paused-mode');
+                hud.classList.add('running');
+                
+                // 鎖定介面
+                setInterfaceLock(true);
+                
+                document.getElementById('status-msg').classList.remove('visible');
+                document.getElementById('status-msg').style.color = "var(--accent-alert)";
+                timerDisplay.classList.remove('ended');
+
+                state.intervalId = setInterval(() => {
+                    state.timeLeft--;
+                    timerDisplay.innerText = formatTime(state.timeLeft);
+                    if(state.timeLeft <= 60) timerDisplay.classList.add('warning');
+
+                    players.forEach(p => {
+                        if (p.onCourt) {
+                            p.totalSeconds++;
+                            if (!p.periodTimes[state.currentPeriod]) p.periodTimes[state.currentPeriod] = 0;
+                            p.periodTimes[state.currentPeriod]++;
+                        }
+                    });
+
+                    if (state.timeLeft <= 0) {
+                        clearInterval(state.intervalId);
+                        state.isRunning = false;
+                        state.timeLeft = 0;
+                        
+                        btn.innerText = "PERIOD END";
+                        btn.classList.remove('paused-mode');
+                        btn.disabled = true;
+                        hud.classList.remove('running');
+                        setInterfaceLock(false); // 結束時解鎖
+                        
+                        timerDisplay.classList.remove('warning');
+                        timerDisplay.classList.add('ended');
+                    }
+                    updateTimeUI();
+                    if(document.getElementById('stats-modal').classList.contains('show')) renderStats();
+                }, 1000);
+            }
+        }
+
+        function nextPeriod() {
+            if (state.isRunning) { showLockedAlert(); return; }
+            if (!confirm("CONFIRM START NEXT PERIOD?")) return;
+
+            state.currentPeriod++;
+            state.timeLeft = state.defaultDuration;
+            
+            document.getElementById('game-timer').innerText = formatTime(state.timeLeft);
+            document.getElementById('game-timer').classList.remove('ended', 'warning');
+            document.getElementById('period-display').innerText = getPeriodLabel(state.currentPeriod);
+            
+            players.forEach(p => p.periodTimes[state.currentPeriod] = 0);
+            checkStartReadiness();
+        }
+
+        // --- Player Actions (with Logic Lock) ---
+        function togglePlayer(id) {
+            // 防誤觸鎖定
+            if (state.isRunning) {
+                showLockedAlert();
+                return;
+            }
+
+            const p = players.find(x => x.id === id);
+            const onCourtCount = players.filter(x => x.onCourt).length;
+
+            if (!p.onCourt) {
+                if (onCourtCount >= 5) return;
+                p.onCourt = true;
+            } else {
+                p.onCourt = false;
+            }
+            render();
+            checkStartReadiness();
+        }
+
+        function addPlayer() {
+            if (state.isRunning) { showLockedAlert(); return; } // Lock
+
+            const numInput = document.getElementById('new-number');
+            const nameInput = document.getElementById('new-name');
+            const num = numInput.value;
+            const name = nameInput.value;
+            
+            if (!name) return;
+
+            const newPlayer = {
+                id: Date.now(),
+                number: num || '00',
+                name: name,
+                onCourt: false,
+                periodTimes: {},
+                totalSeconds: 0
+            };
+            for(let i=1; i<=state.currentPeriod; i++) newPlayer.periodTimes[i] = 0;
+            
+            players.push(newPlayer);
+            nameInput.value = '';
+            numInput.value = '';
+            render();
+            checkStartReadiness();
+        }
+
+        function deletePlayer(id, e) {
+            e.stopPropagation();
+            if (state.isRunning) { showLockedAlert(); return; } // Lock
+
+            if(!confirm("REMOVE PLAYER?")) return;
+            players = players.filter(p => p.id !== id);
+            render();
+            checkStartReadiness();
+        }
+
+        // --- Render & Utils ---
+        function render() {
+            const activeList = document.getElementById('active-players-list');
+            const benchList = document.getElementById('bench-players-list');
+            activeList.innerHTML = '';
+            benchList.innerHTML = '';
+
+            const onCourtCount = players.filter(p => p.onCourt).length;
+            const countDisplay = document.getElementById('on-court-count');
+            
+            countDisplay.innerText = `${onCourtCount}/5`;
+            countDisplay.style.color = onCourtCount === 5 ? 'var(--accent-primary)' : '#666';
+
+            players.forEach(p => {
+                const el = document.createElement('div');
+                el.className = `player-card ${p.onCourt ? 'active' : ''}`;
+                
+                // 這裡保留 onclick，但邏輯層會擋住誤觸
+                el.onclick = () => togglePlayer(p.id);
+                
+                el.innerHTML = `
+                    <div class="p-left">
+                        <div class="p-num">${p.number}</div>
+                        <div class="p-name">${p.name}</div>
+                    </div>
+                    <div class="p-right">
+                        <div class="p-time" id="t-${p.id}">${formatTime(p.totalSeconds)}</div>
+                        <button class="del-btn" onclick="deletePlayer(${p.id}, event)">×</button>
+                    </div>
+                `;
+
+                if (p.onCourt) activeList.appendChild(el);
+                else benchList.appendChild(el);
+            });
+            
+            // 重新渲染後如果還在跑，要記得補上 lock class
+            if (state.isRunning) {
+                setInterfaceLock(true);
+            }
+        }
+
+        function updateTimeUI() {
+            players.forEach(p => {
+                const el = document.getElementById(`t-${p.id}`);
+                if (el) el.innerText = formatTime(p.totalSeconds);
+            });
+        }
+
+        function formatTime(s) {
+            const m = Math.floor(s / 60).toString().padStart(2, '0');
+            const ss = (s % 60).toString().padStart(2, '0');
+            return `${m}:${ss}`;
+        }
+        function getPeriodLabel(p) { return p <= 4 ? `QUARTER ${p}` : `OT ${p-4}`; }
+        function toggleStats() { 
+            document.getElementById('stats-modal').classList.toggle('show');
+            if(document.getElementById('stats-modal').classList.contains('show')) renderStats();
+        }
+        function renderStats() {
+            const t = document.getElementById('stats-table');
+            let h = '<tr><th>#</th><th>NAME</th>';
+            for(let i=1; i<=state.currentPeriod; i++) h += `<th>${i>4?'OT'+(i-4):'Q'+i}</th>`;
+            h += '<th>TTL</th></tr>';
+            let b = '';
+            players.forEach(p => {
+                b += `<tr><td style="color:#666">${p.number}</td><td>${p.name}</td>`;
+                for(let i=1; i<=state.currentPeriod; i++) b += `<td>${formatTime(p.periodTimes[i]||0)}</td>`;
+                b += `<td style="color:var(--accent-primary)">${formatTime(p.totalSeconds)}</td></tr>`;
+            });
+            t.innerHTML = h + b;
+        }
+        function exportData() { console.log(JSON.stringify(players)); alert("Data Exported to Console"); }
+    </script>
+</body>
+</html>
